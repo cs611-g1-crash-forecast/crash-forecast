@@ -1,0 +1,15 @@
+# raw data is mounted from ../data, never committed
+data/
+
+# everything the pipeline writes is rebuilt from code + config + raw data
+datamart/
+model_bank/
+logs/
+
+# Python and Jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
