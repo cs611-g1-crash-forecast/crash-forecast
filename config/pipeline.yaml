@@ -1,0 +1,42 @@
+# Pipeline settings
+## Code reads every date, path and threshold from here.
+
+paths:
+  raw_data: data # mounted read-only from ../data
+  reference: reference # small static files kept in the repo
+  datamart: datamart
+
+window:
+  start: "2018-03-01T00:00" # first hour of the study
+  end: "2023-09-01T00:00" # exclusive: the study ends 2023-08-31 23:59
+
+deployment:
+  go_live: "2023-01-01T00:00" # hourly forecasting starts here; everything before is loaded in bulk
+
+spark:
+  driver_memory: 4g
+
+
+# Each source: where its files are and the column that says when a record becomes available ("arrives").
+# {month} is filled in as YYYY-MM for monthly files.
+sources:
+  crashes:
+    file: chicago_traffic_crashes/chicago_traffic_crashes_2018-03-01_to_2023-08-31.csv.gz
+    arrived_at: date_police_notified
+  weather:
+    file: noaa_weather/noaa_ncei_global_hourly_chicago_ohare_725300-94846_2018-03-01_to_2023-08-31.csv.gz
+    rename:
+      DATE: DATE_UTC # Spark ignores case, so DATE will clash with our "date" partition column
+    arrived_at: DATE_UTC
+    arrived_at_is_utc: true
+  tracker:
+    file: chicago_traffic_tracker/chicago_traffic_tracker_segment_congestion_{month}.csv.gz
+    arrived_at: time
+  taxi:
+    file: chicago_taxi_trips/chicago_taxi_trips_{month}.csv.gz
+    arrived_at: trip_end_timestamp
+  licences:
+    file: chicago_business_licenses/chicago_business_licenses_bars_nightlife_overlap_2018-03-01_to_2023-08-31.csv.gz
+    arrived_at: date_issued
+  boundaries:
+    file: chicago_community_areas.geojson
