@@ -28,14 +28,34 @@ with DAG(
             pool="spark",  # at most 2 Spark jobs at once, to fit in Docker's memory
         )
 
+    silver = {}
     for source in SILVER_SOURCES:
-        silver = BashOperator(
+        silver[source] = BashOperator(
             task_id=f"silver_{source}",
             bash_command=f"python main.py silver --source {source} {INTERVAL}",
             cwd="/opt/airflow/crash-forecast",
             pool="spark",
         )
         # silver reads the batch its bronze task wrote; crashes also need the boundaries in bronze
-        bronze[source] >> silver
+        bronze[source] >> silver[source]
         if source == "crashes":
-            bronze["boundaries"] >> silver
+            bronze["boundaries"] >> silver[source]
+
+    # gold also reads earlier months' silver (late crash reports, 4-week lags, the last weather
+    # reading before the month), so depends_on_past: a month's gold waits for the previous month's
+    gold_labels = BashOperator(
+        task_id="gold_labels",
+        bash_command=f"python main.py gold_labels {INTERVAL}",
+        cwd="/opt/airflow/crash-forecast",
+        pool="spark",
+        depends_on_past=True,
+    )
+    gold_features = BashOperator(
+        task_id="gold_features",
+        bash_command=f"python main.py gold_features {INTERVAL}",
+        cwd="/opt/airflow/crash-forecast",
+        pool="spark",
+        depends_on_past=True,
+    )
+    silver["crashes"] >> gold_labels
+    [silver["crashes"], silver["weather"]] >> gold_features

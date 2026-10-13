@@ -1,24 +1,29 @@
-# Pipeline settings
-## Code reads every date, path and threshold from here.
+# Pipeline settings. Code reads every date, path and threshold from here.
 
 paths:
-  raw_data: data # mounted read-only from ../data
-  reference: reference # small static files kept in the repo
+  raw_data: data            # mounted read-only from ../data
+  reference: reference      # small static files kept in the repo
   datamart: datamart
 
 window:
-  start: "2018-03-01T00:00" # first hour of the study
-  end: "2023-09-01T00:00" # exclusive: the study ends 2023-08-31 23:59
+  start: "2018-03-01T00:00"   # first hour of the study
+  end: "2023-09-01T00:00"     # exclusive: the study ends 2023-08-31 23:59
 
 deployment:
-  go_live: "2023-01-01T00:00" # hourly forecasting starts here; everything before is loaded in bulk
+  go_live: "2023-01-01T00:00"   # hourly forecasting starts here; everything before is loaded in bulk
 
 spark:
   driver_memory: 4g
 
+features:
+  families: [cal, crash, wx]   # trk, taxi and lic come in phase 3a
+  covid_regime: {start: "2020-03", end: "2021-06"}   # months, inclusive: cal_covid_regime = 1
 
-# Each source: where its files are and the column that says when a record becomes available ("arrives").
-# {month} is filled in as YYYY-MM for monthly files.
+monitoring:
+  label_lag_days: 1   # the daily run for day D builds the labels of day D-1
+
+# Each source: where its file(s) are, and the column that says when a record
+# becomes available ("arrives"). {month} is filled in as YYYY-MM for monthly files.
 sources:
   crashes:
     file: chicago_traffic_crashes/chicago_traffic_crashes_2018-03-01_to_2023-08-31.csv.gz
@@ -26,7 +31,7 @@ sources:
   weather:
     file: noaa_weather/noaa_ncei_global_hourly_chicago_ohare_725300-94846_2018-03-01_to_2023-08-31.csv.gz
     rename:
-      DATE: DATE_UTC # Spark ignores case, so DATE will clash with our "date" partition column
+      DATE: DATE_UTC   # Spark ignores case, so DATE would clash with our "date" partition column
     arrived_at: DATE_UTC
     arrived_at_is_utc: true
   tracker:

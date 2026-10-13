@@ -5,7 +5,11 @@ import yaml
 from pyspark.sql import SparkSession
 
 import utils.bronze
+import utils.gold
 import utils.silver
+
+STAGES = ["bronze", "silver", "gold_labels", "gold_features"]
+SPARK_STAGES = ["bronze", "silver", "gold_labels", "gold_features"]
 
 
 def get_spark(config):
@@ -30,32 +34,39 @@ def parse_time(text):
     return datetime.fromisoformat(text).replace(tzinfo=None)
 
 
+def run_stage(args, start, end, config, spark):
+    """Run one stage; returns the number of rows it wrote."""
+    if args.stage == "bronze":
+        if args.source == "boundaries":
+            return utils.bronze.process_bronze_boundaries(config)
+        return utils.bronze.process_bronze_table(args.source, start, end, config, spark)
+    if args.stage == "silver":
+        if args.source == "crashes":
+            return utils.silver.process_silver_crashes(start, end, config, spark)
+        if args.source == "weather":
+            return utils.silver.process_silver_weather(start, end, config, spark)
+    if args.stage == "gold_labels":
+        return utils.gold.process_gold_labels(start, end, config, spark)
+    if args.stage == "gold_features":
+        return utils.gold.process_gold_features(start, end, config, spark)
+    raise SystemExit(f"{args.stage}: unknown source {args.source!r}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run one pipeline stage for one interval [start, end).")
-    parser.add_argument("stage", choices=["bronze", "silver"])
+    parser.add_argument("stage", choices=STAGES)
     parser.add_argument("--start", required=True, help="interval start, e.g. 2018-03-01T00:00")
     parser.add_argument("--end", required=True, help="interval end (exclusive)")
-    parser.add_argument("--source", help="bronze: crashes, weather, tracker, taxi, licences or boundaries; silver: crashes or weather")
+    parser.add_argument("--source", help="bronze, silver: the source, e.g. crashes")
     args = parser.parse_args()
 
     with open("config/pipeline.yaml") as f:
         config = yaml.safe_load(f)
     start, end = parse_time(args.start), parse_time(args.end)
 
-    if args.stage == "bronze":
-        if args.source == "boundaries":
-            utils.bronze.process_bronze_boundaries(config)
-        else:
-            spark = get_spark(config)
-            utils.bronze.process_bronze_table(args.source, start, end, config, spark)
-            spark.stop()
-
-    if args.stage == "silver":
-        spark = get_spark(config)
-        if args.source == "crashes":
-            utils.silver.process_silver_crashes(start, end, config, spark)
-        elif args.source == "weather":
-            utils.silver.process_silver_weather(start, end, config, spark)
+    spark = get_spark(config) if args.stage in SPARK_STAGES and args.source != "boundaries" else None
+    run_stage(args, start, end, config, spark)
+    if spark:
         spark.stop()
 
 
