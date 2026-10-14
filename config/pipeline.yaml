@@ -4,6 +4,7 @@ paths:
   raw_data: data            # mounted read-only from ../data
   reference: reference      # small static files kept in the repo
   datamart: datamart
+  landing: datamart/landing   # the simulated live feed (stage_feed)
   model_bank: model_bank
 
 window:
@@ -12,6 +13,9 @@ window:
 
 deployment:
   go_live: "2023-01-01T00:00"   # hourly forecasting starts here; everything before is loaded in bulk
+
+schedules:
+  max_active_runs: 4   # hourly_forecast runs at once during the replay (gold_features still goes hour by hour)
 
 spark:
   driver_memory: 4g
