@@ -43,6 +43,13 @@ evaluation:
 
 monitoring:
   label_lag_days: 1   # the daily run for day D builds the labels of day D-1
+  # proposed defaults, labelled as assumptions until the replay gives evidence
+  psi: {warn: 0.1, alert: 0.25}
+  attribution_ndcg: 0.9       # SageMaker Clarify's default
+  ndcg_alert_days: 3
+  p0_window_days: 28
+  p0_drop_pct: 10             # rolling P0 this % below validation P0 -> retrain
+  fairness_gap: 0.15          # P0 gap (high-taxi-coverage areas - the rest) this much wider than on validation -> alert
 
 # Each source: where its file(s) are, and the column that says when a record
 # becomes available ("arrives"). {month} is filled in as YYYY-MM for monthly files.
