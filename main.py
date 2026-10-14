@@ -8,12 +8,14 @@ from pyspark.sql import SparkSession
 import utils.bronze
 import utils.gold
 import utils.model
+import utils.monitor
 import utils.serve
 import utils.silver
 import utils.tables
 
 STAGES = ["stage_feed", "bronze", "silver", "gold_labels", "gold_features", "train",
-          "check_data_quality", "infer", "log_run"]
+          "check_data_quality", "infer", "log_run",
+          "monitor_performance", "monitor_stability", "monitor_attribution", "monitor_fairness", "decide_actions"]
 SPARK_STAGES = ["stage_feed", "bronze", "silver", "gold_labels", "gold_features"]
 
 
@@ -65,6 +67,16 @@ def run_stage(args, start, end, config, spark):
         return utils.serve.infer(start, end, args.role, config)
     if args.stage == "log_run":
         return utils.serve.log_run(start, end, config)
+    if args.stage == "monitor_performance":
+        return utils.monitor.monitor_performance(start, end, config)
+    if args.stage == "monitor_stability":
+        return utils.monitor.monitor_stability(start, end, config)
+    if args.stage == "monitor_attribution":
+        return utils.monitor.monitor_attribution(start, end, config)
+    if args.stage == "monitor_fairness":
+        return utils.monitor.monitor_fairness(start, end, config)
+    if args.stage == "decide_actions":
+        return utils.monitor.decide_actions(start, end, config)
     raise SystemExit(f"{args.stage}: unknown source {args.source!r}")
 
 
