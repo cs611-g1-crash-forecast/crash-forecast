@@ -5,7 +5,7 @@ from airflow.sdk import DAG
 from airflow.timetables.interval import CronDataIntervalTimetable
 
 SOURCES = ["crashes", "weather", "tracker", "taxi", "licences", "boundaries"]
-SILVER_SOURCES = ["crashes", "weather"]  # tracker, taxi and licences get silver in phase 3a
+SILVER_SOURCES = ["crashes", "weather"]  # tracker, taxi and licences have no silver yet
 
 # every task runs one pipeline stage for this run's month: [data_interval_start, data_interval_end)
 INTERVAL = "--start {{ data_interval_start.isoformat() }} --end {{ data_interval_end.isoformat() }}"
