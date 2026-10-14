@@ -4,6 +4,7 @@ paths:
   raw_data: data            # mounted read-only from ../data
   reference: reference      # small static files kept in the repo
   datamart: datamart
+  model_bank: model_bank
 
 window:
   start: "2018-03-01T00:00"   # first hour of the study
@@ -16,8 +17,25 @@ spark:
   driver_memory: 4g
 
 features:
-  families: [cal, crash, wx]   # trk, taxi and lic come in phase 3a
+  families: [cal, crash, wx]   # calendar, crash history, weather; trk, taxi and lic are not built yet
   covid_regime: {start: "2020-03", end: "2021-06"}   # months, inclusive: cal_covid_regime = 1
+
+# months, inclusive; train starts in April because March has no 4-week history
+splits:
+  train: ["2018-04", "2021-12"]
+  validation: ["2022-01", "2022-06"]
+  test: ["2022-07", "2022-12"]
+  oot: ["2023-01", "2023-08"]      # the live period after go-live
+  train_exclude: []                # e.g. ["2020-03", "2021-06"] to leave the COVID months out
+
+models:
+  candidates: [B0, M1]   # B0 seasonal baseline, M1 Poisson regression
+
+evaluation:
+  top_k: 10        # P0: share of a shift's crashes in the 10 areas forecast highest
+  shift_hours: 8
+  fairness_groups:
+    high_taxi_coverage: [8, 28, 32, 76]   # 76% of taxi pickups (proposal EDA); crash-rate terciles come from train
 
 monitoring:
   label_lag_days: 1   # the daily run for day D builds the labels of day D-1

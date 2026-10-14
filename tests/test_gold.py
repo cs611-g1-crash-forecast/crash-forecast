@@ -1,5 +1,5 @@
-"""Point-in-time tests for the gold feature store (contracts §1: a feature may use a record
-only if it arrived before the target hour T). Run with: python -m pytest tests/"""
+"""Point-in-time tests for the gold feature store: a feature may use a record
+only if it arrived before the target hour T. Run with: python -m pytest tests/"""
 from datetime import datetime, timedelta
 
 import pandas as pd

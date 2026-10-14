@@ -11,8 +11,7 @@ RUN apt-get update \
 RUN ln -s "/usr/lib/jvm/java-17-openjdk-$(dpkg --print-architecture)" /usr/lib/jvm/java-17
 ENV JAVA_HOME=/usr/lib/jvm/java-17
 
-# Python packages, installed as the airflow user (Airflow's custom-image guide)
+# Python packages, installed as the airflow user (as in Airflow's docs on building a custom image)
 USER airflow
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir "apache-airflow==${AIRFLOW_VERSION}" -r /requirements.txt
-

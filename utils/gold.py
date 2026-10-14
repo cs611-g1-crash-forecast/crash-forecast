@@ -15,7 +15,7 @@ AREAS = range(1, 78)  # the 77 community areas
 def hour_grid(first, last):
     """Every Chicago clock hour from first to last, inclusive, as naive timestamps.
     The spring-forward hour doesn't exist, so it has no row; the fall-back hour happens twice
-    but is one row (contracts §1, DST)."""
+    but is one row."""
     # an end point on the fall-back hour is ambiguous, and one in the spring gap doesn't exist:
     # take the range as wide as those clock times allow
     first = pd.Timestamp(first).tz_localize("America/Chicago", ambiguous=True, nonexistent="shift_forward")
@@ -82,7 +82,7 @@ def process_gold_labels(start, end, config, spark):
         F.count("*").alias("crash_count"),
         F.sum(F.when(F.col("crash_type").startswith("INJURY"), 1).otherwise(0)).alias("crash_count_injury_tow"))
 
-    # the full grid, with zeros kept explicitly (contracts §2)
+    # the full grid, with zeros kept explicitly
     grid = grid_df(hour_grid(first, end_hour - timedelta(hours=1)), spark)
     labels = (grid.join(counts, ["community_area", "hour_start"], "left")
               .fillna(0, ["crash_count", "crash_count_injury_tow"])
@@ -101,7 +101,7 @@ def process_gold_labels(start, end, config, spark):
 def target_hours(start, end, config):
     """The target hours T a gold_features run writes: (start, end].
     A run has seen every arrival before end, so it can build features up to T = end:
-    the hourly run for [T-1, T) writes T's 77 rows (contracts §4); the first run also writes the window's first hour."""
+    the hourly run for [T-1, T) writes T's 77 rows; the first run also writes the window's first hour."""
     window_start = datetime.fromisoformat(config["window"]["start"])
     first = start if start <= window_start else start + timedelta(hours=1)
     return hour_grid(first, end)
