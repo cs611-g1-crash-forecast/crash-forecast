@@ -4,6 +4,9 @@ import os
 from collections import Counter
 from datetime import datetime
 
+import glob
+from datetime import timedelta
+
 import pyspark.sql.functions as F
 from dateutil.relativedelta import relativedelta
 
@@ -13,8 +16,8 @@ def source_files(file_pattern, raw_dir, start, end):
     if "{month}" not in file_pattern:
         return [os.path.join(raw_dir, file_pattern)]
 
-    # Monthly files are split by when a record starts (a taxi trip's start, a tracker reading).
-    # A record can arrive in the next month (a trip from 23:45 on the 31st ends after midnight),
+    # monthly files are split by when a record starts (a taxi trip's start, a tracker reading),
+    # and a record can arrive in the next month (a trip from 23:45 on the 31st ends after midnight),
     # so read from the month before start up to the month of end
     files = []
     month = datetime(start.year, start.month, 1) - relativedelta(months=1)
@@ -23,6 +26,16 @@ def source_files(file_pattern, raw_dir, start, end):
         if os.path.exists(path):
             files.append(path)
         month += relativedelta(months=1)
+    return files
+
+
+def landing_files(source, landing_dir, start, end):
+    """Live runs read the simulated feed: the landing files of the arrival dates in [start, end)."""
+    files = []
+    day = start.date()
+    while day <= (end - timedelta(microseconds=1)).date():
+        files += sorted(glob.glob(os.path.join(landing_dir, source, f"date={day}", "*.csv.gz")))
+        day += timedelta(days=1)
     return files
 
 
@@ -46,20 +59,15 @@ def run_id_for(start, end):
     return "bulk_" + start.strftime("%Y%m")
 
 
-def process_bronze_table(source, start, end, config, spark):
-    source_cfg = config["sources"][source]
-    raw_dir = config["paths"]["raw_data"]
-    window_start = datetime.fromisoformat(config["window"]["start"])
-
-    files = source_files(source_cfg["file"], raw_dir, start, end)
-
+def read_raw(files, source_cfg, spark):
+    """The source rows as text, with the arrival time of each record in _arrived_at."""
     # the header as written (Spark would rename repeated names to NAME1, NAME215, ...)
     with gzip.open(files[0], "rt") as f:
         header = next(csv.reader(f))
 
     # load data - IRL this is the source system's feed
     # no inferSchema: every column stays text, exactly as the source wrote it
-    # multiLine: a quoted field may contain line breaks (the "location" of the licences do);
+    # multiLine: a quoted field may contain line breaks (the licences' "location" does);
     # escape='"': a quote inside a quoted field is written as two quotes
     df = (spark.read.csv(files, header=True, multiLine=True, escape='"')
           .toDF(*unique_columns(header)))
@@ -70,10 +78,24 @@ def process_bronze_table(source, start, end, config, spark):
     arrived = F.col(source_cfg["arrived_at"])
     if source_cfg.get("arrived_at_is_utc"):
         arrived = F.from_utc_timestamp(F.to_timestamp(arrived), "America/Chicago")
-    df = df.withColumn("_arrived_at", arrived.cast("timestamp_ntz"))
+    return df.withColumn("_arrived_at", arrived.cast("timestamp_ntz"))
 
-    # keep what arrived in [start, end)
-    # the first run of the study also takes everything that arrived before it (eg. licences issued before 2018)
+
+def process_bronze_table(source, start, end, config, spark):
+    source_cfg = config["sources"][source]
+    raw_dir = config["paths"]["raw_data"]
+    window_start = datetime.fromisoformat(config["window"]["start"])
+
+    # bulk runs (before go-live) read the source files; live runs read the simulated feed
+    if start < datetime.fromisoformat(config["deployment"]["go_live"]):
+        files = source_files(source_cfg["file"], raw_dir, start, end)
+    else:
+        files = landing_files(source, config["paths"]["landing"], start, end)
+
+    df = read_raw(files, source_cfg, spark)
+
+    # keep what arrived in [start, end); the first run of the study also takes
+    # everything that arrived before it (e.g. licences issued before 2018)
     in_interval = F.col("_arrived_at") < end
     if start > window_start:
         in_interval = in_interval & (F.col("_arrived_at") >= start)
@@ -105,3 +127,20 @@ def process_bronze_boundaries(config):
     print("bronze boundaries: copied", source)
 
 
+def stage_feed(source, start, end, config, spark):
+    """SIMULATION ONLY, not part of the production pipeline: split the records that arrive in
+    [start, end) into one landing folder per arrival date, as a live feed would deliver them
+    (datamart/landing/<source>/date=YYYY-MM-DD/). Live bronze runs read from there."""
+    source_cfg = config["sources"][source]
+    files = source_files(source_cfg["file"], config["paths"]["raw_data"], start, end)
+    df = read_raw(files, source_cfg, spark).filter((F.col("_arrived_at") >= start) & (F.col("_arrived_at") < end))
+
+    # the rows as received (after bronze's renames), one folder per arrival date
+    landing_path = os.path.join(config["paths"]["landing"], source)
+    (df.withColumn("date", F.to_date("_arrived_at")).drop("_arrived_at")
+       .write.mode("overwrite").partitionBy("date")
+       .option("header", True).option("escape", '"').option("compression", "gzip")
+       .csv(landing_path))
+    landed = spark.read.csv(landing_path, header=True, multiLine=True, escape='"')
+    print(f"stage_feed {source}: {landed.count():,} rows that arrive from {start:%Y-%m-%d} to {end:%Y-%m-%d} "
+          f"written to {landing_path}, {landed.select('date').distinct().count()} arrival dates")
