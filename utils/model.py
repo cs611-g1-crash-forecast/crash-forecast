@@ -15,7 +15,7 @@ from sklearn.preprocessing import StandardScaler
 LABEL = "crash_count"
 
 
-# ---------- reading the gold stores (pandas: the data for training fits in memory) ----------
+# reading the gold stores (pandas: the data for training fits in memory)
 
 def read_gold(table, columns, first, end, config):
     """Rows of a gold table with hour_start in [first, end), only the columns asked for."""
@@ -53,7 +53,7 @@ def load_split(split, features, config):
     return X.merge(y, on=["community_area", "hour_start"], how="inner")
 
 
-# ---------- the models ----------
+# the models
 
 class SeasonalBaseline:
     """B0: an area's mean count for the same hour of the week over the previous 4 weeks.
@@ -101,7 +101,7 @@ def shap_values(artefact, X):
     return pd.DataFrame(z * artefact["model"].coef_, columns=features)
 
 
-# ---------- metrics ----------
+# metrics
 
 def top_k_capture(df, config):
     """P0: per 8-hour shift, the share of the shift's crashes in the k areas with the highest forecast.
@@ -170,7 +170,7 @@ def fairness_groups(train, config):
     return groups
 
 
-# ---------- the registry ----------
+# the registry
 
 def registry_path(config):
     return os.path.join(config["paths"]["model_bank"], "registry.json")
@@ -209,7 +209,7 @@ def utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
-# ---------- the training job ----------
+# the training job
 
 def train_models(start, end, config):
     """Train every candidate on the config splits (all before end), evaluate, and register them.

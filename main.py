@@ -6,9 +6,10 @@ from pyspark.sql import SparkSession
 
 import utils.bronze
 import utils.gold
+import utils.model
 import utils.silver
 
-STAGES = ["bronze", "silver", "gold_labels", "gold_features"]
+STAGES = ["bronze", "silver", "gold_labels", "gold_features", "train"]
 SPARK_STAGES = ["bronze", "silver", "gold_labels", "gold_features"]
 
 
@@ -49,6 +50,9 @@ def run_stage(args, start, end, config, spark):
         return utils.gold.process_gold_labels(start, end, config, spark)
     if args.stage == "gold_features":
         return utils.gold.process_gold_features(start, end, config, spark)
+    # the stages below use pandas and scikit-learn: their data fits in memory, so no Spark session
+    if args.stage == "train":
+        return len(utils.model.train_models(start, end, config))
     raise SystemExit(f"{args.stage}: unknown source {args.source!r}")
 
 
