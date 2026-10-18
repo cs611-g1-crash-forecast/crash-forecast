@@ -23,7 +23,10 @@ spark:
 features:
   families: [cal, crash, wx]   # calendar, crash history, weather; trk, taxi and lic are not built yet
   covid_regime: {start: "2020-03", end: "2021-06"}   # months, inclusive: cal_covid_regime = 1
-
+  licence_groups:   # licence types counted as active venues per area (lic_); other types are left out
+    nightlife: [Tavern, Late Hour, Public Place of Amusement, Consumption on Premises - Incidental Activity, Music and Dance]
+    package_goods: [Package Goods]
+    
 # months, inclusive; train starts in April because March has no 4-week history
 splits:
   train: ["2018-04", "2021-12"]
