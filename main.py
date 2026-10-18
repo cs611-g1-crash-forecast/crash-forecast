@@ -7,10 +7,12 @@ from pyspark.sql import SparkSession
 
 import utils.bronze
 import utils.gold
+import utils.licences
 import utils.model
 import utils.monitor
 import utils.serve
 import utils.silver
+import utils.taxi
 import utils.tables
 import utils.tracker
 
@@ -57,6 +59,10 @@ def run_stage(args, start, end, config, spark):
             return utils.silver.process_silver_crashes(start, end, config, spark)
         if args.source == "weather":
             return utils.silver.process_silver_weather(start, end, config, spark)
+        if args.source == "taxi":
+            return utils.taxi.process_silver_taxi(start, end, config, spark)
+        if args.source == "licences":
+            return utils.licences.process_silver_licences(start, end, config, spark)
     if args.stage == "gold_labels":
         return utils.gold.process_gold_labels(start, end, config, spark)
     if args.stage == "gold_features":
