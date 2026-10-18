@@ -14,6 +14,7 @@ import utils.serve
 import utils.silver
 import utils.taxi
 import utils.tables
+import utils.tracker
 
 STAGES = ["stage_feed", "bronze", "silver", "gold_labels", "gold_features", "train",
           "check_data_quality", "infer", "log_run",
@@ -52,6 +53,8 @@ def run_stage(args, start, end, config, spark):
             return utils.bronze.process_bronze_boundaries(config)
         return utils.bronze.process_bronze_table(args.source, start, end, config, spark)
     if args.stage == "silver":
+        if args.source == "tracker":
+            return utils.tracker.process_silver_tracker(start, end, config, spark)        
         if args.source == "crashes":
             return utils.silver.process_silver_crashes(start, end, config, spark)
         if args.source == "weather":
