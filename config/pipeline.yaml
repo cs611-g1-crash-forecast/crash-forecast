@@ -34,6 +34,8 @@ splits:
 
 models:
   candidates: [B0, M1]   # B0 seasonal baseline, M1 Poisson regression
+  params:
+    M2: {n_estimators: 300, max_depth: 6, learning_rate: 0.1}   # XGBoost starting values; tuning proposes better ones
 
 evaluation:
   top_k: 10        # P0: share of a shift's crashes in the 10 areas forecast highest
