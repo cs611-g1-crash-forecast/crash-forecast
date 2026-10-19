@@ -26,7 +26,7 @@ features:
   licence_groups:   # licence types counted as active venues per area (lic_); other types are left out
     nightlife: [Tavern, Late Hour, Public Place of Amusement, Consumption on Premises - Incidental Activity, Music and Dance]
     package_goods: [Package Goods]
-    
+
 # months, inclusive; train starts in April because March has no 4-week history
 splits:
   train: ["2018-04", "2021-12"]
@@ -43,6 +43,18 @@ evaluation:
   shift_hours: 8
   fairness_groups:
     high_taxi_coverage: [8, 28, 32, 76]   # 76% of taxi pickups (proposal EDA); crash-rate terciles come from train
+
+# RandomizedSearchCV over these values, with time-ordered folds on train; scored by Poisson deviance
+tuning:
+  M2:
+    n_iter: 10
+    cv_folds: 3
+    space:
+      n_estimators: [200, 400, 600]
+      max_depth: [3, 4, 6, 8]
+      learning_rate: [0.03, 0.05, 0.1]
+      min_child_weight: [1, 10, 50]
+      subsample: [0.7, 0.85, 1.0]
 
 monitoring:
   label_lag_days: 1   # the daily run for day D builds the labels of day D-1
