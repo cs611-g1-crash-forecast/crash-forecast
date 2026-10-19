@@ -1,0 +1,26 @@
+# Runs the tests on every pull request into main, and on every merge, in the same image
+# that runs the pipeline, so a test passes here only if it passes in Airflow and Jupyter too.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the image
+        run: docker build -t crash-forecast:ci .
+
+      # the repo mounted where docker-compose mounts it; the runner's user id, as AIRFLOW_UID does locally
+      - name: Run the tests
+        run: >
+          docker run --rm --user "$(id -u):0"
+          -v "$PWD:/opt/airflow/crash-forecast" -w /opt/airflow/crash-forecast
+          crash-forecast:ci python -m pytest tests/ -q -p no:cacheprovider
