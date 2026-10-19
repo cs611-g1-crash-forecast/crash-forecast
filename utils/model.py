@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 import pyarrow.dataset
+import xgboost
 from dateutil.relativedelta import relativedelta
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import PoissonRegressor
@@ -64,7 +65,7 @@ class SeasonalBaseline:
         return X[self.feature].fillna(0).to_numpy()
 
 
-def fit_candidate(algorithm, train, features):
+def fit_candidate(algorithm, train, features, config):
     """Returns (model, feature_list, preprocessing_transformers), all fitted on train only."""
     if algorithm == "B0":
         return SeasonalBaseline(), [SeasonalBaseline.feature], {}
@@ -76,6 +77,13 @@ def fit_candidate(algorithm, train, features):
         model = PoissonRegressor(alpha=1e-4, max_iter=300)
         model.fit(scaler.transform(imputer.transform(train[features])), train[LABEL])
         return model, features, {"imputer": imputer, "stdscaler": scaler}
+    if algorithm == "M2":
+        # gradient-boosted trees with a Poisson objective; XGBoost handles missing values itself,
+        # and trees need no scaling, so there is no preprocessing
+        model = xgboost.XGBRegressor(objective="count:poisson", tree_method="hist", random_state=0,
+                                     **config["models"]["params"]["M2"])
+        model.fit(train[features], train[LABEL])
+        return model, features, {}
     raise ValueError(f"unknown algorithm {algorithm}")
 
 
@@ -94,6 +102,10 @@ def shap_values(artefact, X):
     B0's prediction is its one feature, so its contribution is x - mean."""
     features = artefact["feature_list"]
     pre = artefact["preprocessing_transformers"]
+    if isinstance(artefact["model"], xgboost.XGBRegressor):
+        # TreeSHAP, built into XGBoost; the last column is the bias term, not a feature
+        contribs = artefact["model"].get_booster().predict(xgboost.DMatrix(X[features]), pred_contribs=True)
+        return pd.DataFrame(contribs[:, :-1], columns=features)
     if not pre:
         x = X[features].fillna(0).to_numpy()
         return pd.DataFrame(x - artefact["train_means"], columns=features)
@@ -233,7 +245,7 @@ def train_models(start, end, config):
     train_end = split_bounds("train", config)[1] - relativedelta(months=1)
     entries = []
     for algorithm in config["models"]["candidates"]:
-        model, feature_list, pre = fit_candidate(algorithm, train_rows, features)
+        model, feature_list, pre = fit_candidate(algorithm, train_rows, features, config)
         model_version = f"{algorithm}_{train_end:%Y_%m}_{run_at:%Y%m%dT%H%M%S}"
         artefact = {
             "model": model,
