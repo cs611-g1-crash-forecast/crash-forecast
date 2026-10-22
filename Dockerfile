@@ -14,4 +14,6 @@ ENV JAVA_HOME=/usr/lib/jvm/java-17
 # Python packages, installed as the airflow user (as in Airflow's docs on building a custom image)
 USER airflow
 COPY requirements.txt /requirements.txt
-RUN pip install --no-cache-dir "apache-airflow==${AIRFLOW_VERSION}" -r /requirements.txt
+# make what pip installed group-writable: on Linux the containers run as your own user (AIRFLOW_UID) in group 0, and JupyterLab writes its runtime files under /home/airflow
+RUN pip install --no-cache-dir "apache-airflow==${AIRFLOW_VERSION}" -r /requirements.txt \
+    && chmod -R g+rwX /home/airflow
