@@ -193,7 +193,12 @@ def process_gold_features(start, end, config, spark):
     run_id = run_id_for(start, end)
     targets = target_hours(start, end, config)
 
-    families = {"cal": cal_features, "crash": crash_features, "wx": wx_features}
+    from utils.licences import lic_features
+    from utils.taxi import taxi_features
+    from utils.tracker import trk_features
+    
+    families = {"cal": cal_features, "crash": crash_features, "wx": wx_features,
+                "trk": trk_features, "taxi": taxi_features, "lic": lic_features} 
     df = grid_df(targets, spark).withColumn("feature_cutoff", F.col("hour_start"))
     for family in config["features"]["families"]:
         family_df = families[family](targets, config, spark)

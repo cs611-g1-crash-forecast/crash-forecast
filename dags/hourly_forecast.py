@@ -8,7 +8,7 @@ from airflow.timetables.interval import CronDataIntervalTimetable
 with open("/opt/airflow/crash-forecast/config/pipeline.yaml") as f:
     config = yaml.safe_load(f)
 
-SOURCES = ["crashes", "weather"]  # tracker, taxi and licences are not built yet
+SOURCES = ["crashes", "weather", "tracker", "taxi", "licences"]
 
 # every task processes this run's hour, [data_interval_start, data_interval_end), and the features
 # and forecasts are for the next hour T = data_interval_end

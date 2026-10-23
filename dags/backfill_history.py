@@ -5,7 +5,7 @@ from airflow.sdk import DAG
 from airflow.timetables.interval import CronDataIntervalTimetable
 
 SOURCES = ["crashes", "weather", "tracker", "taxi", "licences", "boundaries"]
-SILVER_SOURCES = ["crashes", "weather"]  # tracker, taxi and licences have no silver yet
+SILVER_SOURCES = ["crashes", "weather", "tracker", "taxi", "licences"]
 
 # every task runs one pipeline stage for this run's month: [data_interval_start, data_interval_end)
 INTERVAL = "--start {{ data_interval_start.isoformat() }} --end {{ data_interval_end.isoformat() }}"
@@ -36,13 +36,11 @@ with DAG(
             cwd="/opt/airflow/crash-forecast",
             pool="spark",
         )
-        # silver reads the batch its bronze task wrote; crashes also need the boundaries in bronze
+        # silver reads the batch its bronze task wrote; crashes and tracker also need the boundaries in bronze
         bronze[source] >> silver[source]
-        if source == "crashes":
+        if source in ("crashes", "tracker"):
             bronze["boundaries"] >> silver[source]
 
-    # gold also reads earlier months' silver (late crash reports, 4-week lags, the last weather
-    # reading before the month), so depends_on_past: a month's gold waits for the previous month's
     gold_labels = BashOperator(
         task_id="gold_labels",
         bash_command=f"python main.py gold_labels {INTERVAL}",
@@ -58,4 +56,4 @@ with DAG(
         depends_on_past=True,
     )
     silver["crashes"] >> gold_labels
-    [silver["crashes"], silver["weather"]] >> gold_features
+    list(silver.values()) >> gold_features
