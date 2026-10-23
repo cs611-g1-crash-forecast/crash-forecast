@@ -41,6 +41,9 @@ with DAG(
         if source in ("crashes", "tracker"):
             bronze["boundaries"] >> silver[source]
 
+    # gold also reads earlier months' silver (late crash reports, 4-week lags, the last weather
+    # reading before the month, licences issued years before), so depends_on_past: a month's
+    # gold waits for the previous month's
     gold_labels = BashOperator(
         task_id="gold_labels",
         bash_command=f"python main.py gold_labels {INTERVAL}",

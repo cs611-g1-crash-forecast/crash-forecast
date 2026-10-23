@@ -193,6 +193,8 @@ def process_gold_features(start, end, config, spark):
     run_id = run_id_for(start, end)
     targets = target_hours(start, end, config)
 
+    # the trk_, taxi_ and lic_ families live with their source's silver, and those modules import
+    # this one's helpers, so they are imported here rather than at the top (a circular import)
     from utils.licences import lic_features
     from utils.taxi import taxi_features
     from utils.tracker import trk_features
