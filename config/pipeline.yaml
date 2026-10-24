@@ -21,7 +21,7 @@ spark:
   driver_memory: 4g
 
 features:
-  families: [cal, crash, wx]   # calendar, crash history, weather; trk, taxi and lic are not built yet
+  families: [cal, crash, wx, trk, taxi, lic]   # calendar, crash history, weather, congestion, taxi trips, licensed venues
   covid_regime: {start: "2020-03", end: "2021-06"}   # months, inclusive: cal_covid_regime = 1
   licence_groups:   # licence types counted as active venues per area (lic_); other types are left out
     nightlife: [Tavern, Late Hour, Public Place of Amusement, Consumption on Premises - Incidental Activity, Music and Dance]
