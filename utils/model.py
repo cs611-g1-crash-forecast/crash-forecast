@@ -221,12 +221,29 @@ def utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
+# ---------- choosing a model ----------
+
+def select_candidate(entries, config):
+    """The candidate to put in shadow: the best validation P0 among those that beat B0's by the margin.
+    P0s within the tie of the best are decided by the lower Poisson deviance. None if none beats B0.
+    Validation, not test: test is kept for the final comparison, so choosing on it would flatter it."""
+    rule = config["models"]["selection"]
+    b0 = next(e for e in entries if e["algorithm"] == "B0")
+    bar = b0["validation_metrics"]["P0"] + rule["margin"]
+    eligible = [e for e in entries if e is not b0 and e["validation_metrics"]["P0"] >= bar]
+    if not eligible:
+        return None
+    best = max(e["validation_metrics"]["P0"] for e in eligible)
+    close = [e for e in eligible if best - e["validation_metrics"]["P0"] <= rule["tie"]]
+    return min(close, key=lambda e: e["validation_metrics"]["poisson_deviance"])
+
+
 # the training job
 
 def train_models(start, end, config):
     """Train every candidate on the config splits (all before end), evaluate, and register them.
-    The very first training run puts B0 in production and the best other candidate in shadow;
-    later runs add candidates for the promotion rule to decide."""
+    The selection rule picks the candidate that shadows production; the very first run also puts B0
+    in production. Promoting the shadow is the monitoring's decision, not training's."""
     for split in ["train", "validation", "test"]:
         assert split_bounds(split, config)[1] <= end, f"{split} ends after this run's end {end}"
     run_at = utc_now()
@@ -263,8 +280,12 @@ def train_models(start, end, config):
             artefact["metrics"][split] = metrics(scored, config, groups)
         # the SHAP baseline: mean |SHAP| per feature on the training data (for the attribution monitor)
         artefact["shap_baseline"] = shap_values(artefact, train_rows).abs().mean().to_dict()
-        # what monitoring compares against: the training forecasts' distribution (PSI), the area groups
-        artefact["stability_reference"] = {"prediction": psi_reference(predict(artefact, train_rows))}
+        # what monitoring compares against: the training forecasts' distribution (PSI), each feature's
+        # (CSI; only the values it had, as a missing value has no bin), and the area groups
+        artefact["stability_reference"] = {
+            "prediction": psi_reference(predict(artefact, train_rows)),
+            "features": {f: psi_reference(train_rows[f].dropna().to_numpy()) for f in feature_list},
+        }
         artefact["fairness_groups"] = groups
 
         # save the model artefact - IRL to a model registry (S3 / MLflow)
@@ -276,6 +297,7 @@ def train_models(start, end, config):
 
         entry = {"model_version": model_version, "algorithm": algorithm, "artefact_path": artefact_path,
                  "status": None, "created_at": run_at.isoformat(), "status_history": [],
+                 "validation_metrics": artefact["metrics"]["validation"],
                  "test_metrics": artefact["metrics"]["test"]}
         set_status(entry, "candidate", "trained", run_at.isoformat())
         entries.append(entry)
@@ -283,13 +305,25 @@ def train_models(start, end, config):
         print(f"{model_version}: P0 validation {m['validation']['P0']:.3f}, test {m['test']['P0']:.3f}; "
               f"MAE test {m['test']['MAE']:.4f}; bias test {m['test']['bias']:.3f} -> {artefact_path}")
 
+    now = run_at.isoformat()
+    b0 = next(e for e in entries if e["algorithm"] == "B0")
+    winner = select_candidate(entries, config)
     if not any(e["status"] == "production" for e in registry):
-        # first deployment: the baseline serves, the best other candidate (by test P0) shadows it
-        b0 = next(e for e in entries if e["algorithm"] == "B0")
-        set_status(b0, "production", "first deployment: the baseline serves first", run_at.isoformat())
-        others = sorted((e for e in entries if e is not b0), key=lambda e: -e["test_metrics"]["P0"])
-        if others:
-            set_status(others[0], "shadow", "first deployment: best other candidate by test P0", run_at.isoformat())
+        # first deployment: the baseline serves first
+        set_status(b0, "production", "first deployment: the baseline serves first", now)
+    else:
+        set_status(b0, "rejected", "the baseline: it sets the bar for the others", now)
+    if winner is not None:
+        # the selected candidate shadows production; promotion is the monitoring's decision
+        for e in registry:
+            if e["status"] == "shadow":
+                set_status(e, "archived", f"replaced in shadow by {winner['model_version']}", now)
+        set_status(winner, "shadow", f"selected: validation P0 {winner['validation_metrics']['P0']:.3f}, "
+                   f"B0 {b0['validation_metrics']['P0']:.3f}", now)
+    for e in entries:
+        if e["status"] == "candidate":
+            set_status(e, "rejected", "not selected: " + (f"{winner['model_version']} was" if winner else
+                       "no candidate beat B0 by the margin, so none was") + " selected", now)
     registry.extend(entries)
     write_registry(registry, config)
     for e in entries:

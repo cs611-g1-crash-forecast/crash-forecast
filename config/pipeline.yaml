@@ -36,7 +36,10 @@ splits:
   train_exclude: []                # e.g. ["2020-03", "2021-06"] to leave the COVID months out
 
 models:
-  candidates: [B0, M1]   # B0 seasonal baseline, M1 Poisson regression
+  candidates: [B0, M1, M2]   # B0 seasonal baseline, M1 Poisson regression, M2 XGBoost (Poisson)
+  # the shadow is the best validation P0 that beats B0's by the margin; P0s within the tie are decided by
+  # Poisson deviance. Proposed defaults: 0.002 is the gap the experiments found too small to call on one split
+  selection: {margin: 0.01, tie: 0.002}
   params:
     M2: {n_estimators: 300, max_depth: 6, learning_rate: 0.1}   # XGBoost starting values; tuning proposes better ones
 
