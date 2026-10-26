@@ -18,7 +18,7 @@ import utils.tracker
 
 STAGES = ["stage_feed", "bronze", "silver", "gold_labels", "gold_features", "train",
           "check_data_quality", "infer", "log_run",
-          "monitor_performance", "monitor_stability", "monitor_attribution", "monitor_fairness", "decide_actions"]
+          "monitor_performance", "monitor_stability", "monitor_attribution", "monitor_fairness", "decide_actions", "apply_actions"]
 SPARK_STAGES = ["stage_feed", "bronze", "silver", "gold_labels", "gold_features"]
 
 
@@ -86,6 +86,8 @@ def run_stage(args, start, end, config, spark):
         return utils.monitor.monitor_fairness(start, end, config)
     if args.stage == "decide_actions":
         return utils.monitor.decide_actions(start, end, config)
+    if args.stage == "apply_actions":
+        return utils.monitor.apply_actions(start, end, config)
     raise SystemExit(f"{args.stage}: unknown source {args.source!r}")
 
 

@@ -41,17 +41,16 @@ def feature_columns(config):
     return sorted(c for c in names if c.split("_")[0] in config["features"]["families"])
 
 
-def split_bounds(split, config):
-    """[first, end) of a split given as inclusive months, e.g. ["2018-04", "2021-12"]."""
+def split_bounds(split, config, shift=0):
+    """[first, end) of a split given as inclusive months, e.g. ["2018-04", "2021-12"],
+    moved forward by shift months (a retrain after go-live)."""
     first, last = config["splits"][split]
-    return datetime.strptime(first, "%Y-%m"), datetime.strptime(last, "%Y-%m") + relativedelta(months=1)
+    return (datetime.strptime(first, "%Y-%m") + relativedelta(months=shift),
+            datetime.strptime(last, "%Y-%m") + relativedelta(months=shift + 1))
 
 
-def load_split(split, features, config):
-    first, end = split_bounds(split, config)
-    X = read_gold("feature_store", ["community_area", "hour_start"] + features, first, end, config)
-    y = read_labels(first, end, config)
-    return X.merge(y, on=["community_area", "hour_start"], how="inner")
+def load_split(split, features, config, shift=0):
+    first, end = split_bounds(split, config, shift)
 
 
 # the models
@@ -244,11 +243,16 @@ def train_models(start, end, config):
     """Train every candidate on the config splits (all before end), evaluate, and register them.
     The selection rule picks the candidate that shadows production; the very first run also puts B0
     in production. Promoting the shadow is the monitoring's decision, not training's."""
+    # a retrain after go-live moves every split forward by the whole months since go-live:
+    # the newest labelled months become test, and the oldest leave train
+    go_live = datetime.fromisoformat(config["deployment"]["go_live"])
+    shift = max(0, (end.year - go_live.year) * 12 + end.month - go_live.month)
     for split in ["train", "validation", "test"]:
-        assert split_bounds(split, config)[1] <= end, f"{split} ends after this run's end {end}"
+        assert split_bounds(split, config, shift)[1] <= end, f"{split} ends after this run's end {end}"
     run_at = utc_now()
     features = feature_columns(config)
-    data = {split: load_split(split, features, config) for split in ["train", "validation", "test"]}
+    data = {split: load_split(split, features, config, shift) for split in ["train", "validation", "test"]}
+    
     train_rows = data["train"]
     if config["splits"]["train_exclude"]:
         first, last = config["splits"]["train_exclude"]
@@ -259,7 +263,7 @@ def train_models(start, end, config):
           f"{len(features)} features")
 
     registry = read_registry(config)
-    train_end = split_bounds("train", config)[1] - relativedelta(months=1)
+    train_end = split_bounds("train", config, shift)[1] - relativedelta(months=1)
     entries = []
     for algorithm in config["models"]["candidates"]:
         model, feature_list, pre = fit_candidate(algorithm, train_rows, features, config)
@@ -270,7 +274,8 @@ def train_models(start, end, config):
             "preprocessing_transformers": pre,
             "feature_list": feature_list,
             "config_snapshot": config,
-            "data_dates": {s: [str(b) for b in split_bounds(s, config)] for s in ["train", "validation", "test"]},
+            "data_dates": {s: [str(b) for b in split_bounds(s, config, shift)]
+                           for s in ["train", "validation", "test"]},
             "train_means": train_rows[feature_list].fillna(0).mean().to_numpy(),
         }
         artefact["metrics"] = {}
