@@ -82,7 +82,7 @@ def log_run(start, end, config):
     predictions = read_table("model_predictions", config,
                              filters=[("run_id", "==", run_id), ("role", "==", "production")])
     fresh = len(predictions) == 77 * len(targets)
-    dag = "hourly_forecast" if run_id.startswith(("h_", "d_")) else "backfill_history"
+    dag = {"h_": "hourly_forecast", "d_": "replay_days"}.get(run_id[:2], "backfill_history")
     rows = [{"run_id": run_id, "dag": dag, "task": r["task"], "interval_start": start, "interval_end": end,
              "started_at": datetime.fromisoformat(r["started_at"]), "seconds": r["seconds"],
              "rows_in": r.get("rows_in"), "rows_out": r["rows_out"], "status": r["status"],
