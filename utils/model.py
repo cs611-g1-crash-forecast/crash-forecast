@@ -51,6 +51,9 @@ def split_bounds(split, config, shift=0):
 
 def load_split(split, features, config, shift=0):
     first, end = split_bounds(split, config, shift)
+    X = read_gold("feature_store", ["community_area", "hour_start"] + features, first, end, config)
+    y = read_labels(first, end, config)
+    return X.merge(y, on=["community_area", "hour_start"], how="inner")
 
 
 # the models
