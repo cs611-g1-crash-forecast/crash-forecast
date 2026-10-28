@@ -1,0 +1,106 @@
+# Pipeline settings for the data sample (tools/make_sample.py builds it): the same pipeline on
+# four months of history and the first two weeks after go-live. tools/package.sh puts this file in the
+# submission zip as config/pipeline.yaml. Only the window, go-live, splits and the sample's file
+# names differ from pipeline.yaml; tests/test_config.py checks that nothing else does.
+
+paths:
+  raw_data: data            # mounted read-only from ../data
+  reference: reference      # small static files kept in the repo
+  datamart: datamart
+  landing: datamart/landing   # the simulated live feed (stage_feed)
+  model_bank: model_bank
+
+window:
+  start: "2022-09-01T00:00"   # first hour of the sample
+  end: "2023-01-15T00:00"     # exclusive: the sample ends 2023-01-14 23:59
+
+deployment:
+  go_live: "2023-01-01T00:00"   # hourly forecasting starts here; everything before is loaded in bulk
+
+schedules:
+  max_active_runs: 4   # hourly_forecast runs at once during the replay (gold_features still goes hour by hour)
+
+spark:
+  driver_memory: 4g
+
+features:
+  families: [cal, crash, wx, trk, taxi, lic]   # calendar, crash history, weather, congestion, taxi trips, licensed venues
+  covid_regime: {start: "2020-03", end: "2021-06"}   # months, inclusive: cal_covid_regime = 1
+  licence_groups:   # licence types counted as active venues per area (lic_); other types are left out
+    nightlife: [Tavern, Late Hour, Public Place of Amusement, Consumption on Premises - Incidental Activity, Music and Dance]
+    package_goods: [Package Goods]
+
+# months, inclusive; train starts in October because September has no 4-week history
+splits:
+  train: ["2022-10", "2022-10"]
+  validation: ["2022-11", "2022-11"]
+  test: ["2022-12", "2022-12"]
+  oot: ["2023-01", "2023-01"]      # the two live weeks after go-live
+  train_exclude: []                # e.g. ["2020-03", "2021-06"] to leave the COVID months out
+
+models:
+  candidates: [B0, M1, M2]   # B0 seasonal baseline, M1 Poisson regression, M2 XGBoost (Poisson)
+  # the shadow is the best validation P0 that beats B0's by the margin; P0s within the tie are decided by
+  # Poisson deviance. Proposed defaults: 0.002 is the gap the experiments found too small to call on one split
+  selection: {margin: 0.01, tie: 0.002}
+  params:
+    M2: {n_estimators: 300, max_depth: 6, learning_rate: 0.1}   # XGBoost starting values; tuning proposes better ones
+
+evaluation:
+  top_k: 10        # P0: share of a shift's crashes in the 10 areas forecast highest
+  shift_hours: 8
+  fairness_groups:
+    high_taxi_coverage: [8, 28, 32, 76]   # 76% of taxi pickups (proposal EDA); crash-rate terciles come from train
+
+# RandomizedSearchCV over these values, with time-ordered folds on train; scored by Poisson deviance
+tuning:
+  M2:
+    n_iter: 10
+    cv_folds: 3
+    space:
+      n_estimators: [200, 400, 600]
+      max_depth: [3, 4, 6, 8]
+      learning_rate: [0.03, 0.05, 0.1]
+      min_child_weight: [1, 10, 50]
+      subsample: [0.7, 0.85, 1.0]
+
+monitoring:
+  label_lag_days: 1   # the daily run for day D builds the labels of day D-1
+  # proposed defaults, labelled as assumptions until the replay gives evidence
+  psi: {warn: 0.1, alert: 0.25}  # for PSI and CSI alike (L7's bands)
+  stability_days: 7           # PSI and CSI compare the last week with training
+  csi_skip_families: [cal]    # the calendar follows the clock: a week can never spread like the training years
+  csi_key_features: 5         # CSI alerts only for the model's 5 features with the largest mean |SHAP| in training
+  attribution_ndcg: 0.9       # SageMaker Clarify's default
+  ndcg_alert_days: 3
+  p0_window_days: 28          # the promotion and retrain window: one of rolling_days
+  rolling_days: [7, 28]       # rolling performance windows, written once a model has forecast all of them
+  rescore_day: 10             # on this day of the month, the month before is scored again (OOT1, OOT2, ...)
+  p0_drop_pct: 10             # rolling P0 this % below validation P0 -> retrain
+  retrain_cooldown_days: 28   # at most one retrain in this many days
+  promote_margin: 0.005       # the shadow's rolling P0 must beat production's by this much to be promoted
+  fairness_gap: 0.15          # P0 gap (high-taxi-coverage areas - the rest) this much wider than on validation -> alert
+
+# Each source: where its file(s) are, and the column that says when a record
+# becomes available ("arrives"). {month} is filled in as YYYY-MM for monthly files.
+sources:
+  crashes:
+    file: chicago_traffic_crashes/chicago_traffic_crashes_2022-09-01_to_2023-01-14.csv.gz
+    arrived_at: date_police_notified
+  weather:
+    file: noaa_weather/noaa_ncei_global_hourly_chicago_ohare_725300-94846_2022-09-01_to_2023-01-14.csv.gz
+    rename:
+      DATE: DATE_UTC   # Spark ignores case, so DATE would clash with our "date" partition column
+    arrived_at: DATE_UTC
+    arrived_at_is_utc: true
+  tracker:
+    file: chicago_traffic_tracker/chicago_traffic_tracker_segment_congestion_{month}.csv.gz
+    arrived_at: time
+  taxi:
+    file: chicago_taxi_trips/chicago_taxi_trips_{month}.csv.gz
+    arrived_at: trip_end_timestamp
+  licences:
+    file: chicago_business_licenses/chicago_business_licenses_bars_nightlife_overlap_2018-03-01_to_2023-01-14.csv.gz
+    arrived_at: date_issued
+  boundaries:
+    file: chicago_community_areas.geojson
