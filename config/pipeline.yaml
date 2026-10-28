@@ -64,11 +64,18 @@ tuning:
 monitoring:
   label_lag_days: 1   # the daily run for day D builds the labels of day D-1
   # proposed defaults, labelled as assumptions until the replay gives evidence
-  psi: {warn: 0.1, alert: 0.25}
+  psi: {warn: 0.1, alert: 0.25}  # for PSI and CSI alike (L7's bands)
+  stability_days: 7           # PSI and CSI compare the last week with training
+  csi_skip_families: [cal]    # the calendar follows the clock: a week can never spread like the training years
+  csi_key_features: 5         # CSI alerts only for the model's 5 features with the largest mean |SHAP| in training
   attribution_ndcg: 0.9       # SageMaker Clarify's default
   ndcg_alert_days: 3
-  p0_window_days: 28
+  p0_window_days: 28          # the promotion and retrain window: one of rolling_days
+  rolling_days: [7, 28]       # rolling performance windows, written once a model has forecast all of them
+  rescore_day: 10             # on this day of the month, the month before is scored again (OOT1, OOT2, ...)
   p0_drop_pct: 10             # rolling P0 this % below validation P0 -> retrain
+  retrain_cooldown_days: 28   # at most one retrain in this many days
+  promote_margin: 0.005       # the shadow's rolling P0 must beat production's by this much to be promoted
   fairness_gap: 0.15          # P0 gap (high-taxi-coverage areas - the rest) this much wider than on validation -> alert
 
 # Each source: where its file(s) are, and the column that says when a record

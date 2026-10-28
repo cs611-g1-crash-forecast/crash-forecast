@@ -24,7 +24,8 @@ def write_rows(df, table, date, run_id, name, config):
 def read_table(table, config, filters=None, columns=None):
     """A gold table as pandas (empty if it doesn't exist yet); filters on its date partitions."""
     path = table_path(table, config)
-    if not os.path.exists(path):
+    # no table yet, or a folder without a file in it (e.g. emptied by hand): an empty frame
+    if not any(name.endswith(".parquet") for _, _, names in os.walk(path) for name in names):
         return pd.DataFrame(columns=columns or [])
     return pd.read_parquet(path, filters=filters, columns=columns)
 

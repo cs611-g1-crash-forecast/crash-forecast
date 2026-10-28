@@ -7,12 +7,14 @@ from airflow.sdk import DAG
 with open("/opt/airflow/crash-forecast/config/pipeline.yaml") as f:
     config = yaml.safe_load(f)
 
-# the first model trains on everything before go-live; the splits inside that window come from config
-WINDOW = f"--start {config['window']['start']} --end {config['deployment']['go_live']}"
+# the first model trains on everything before go-live; a retrain passes a later end in the run's conf
+# ({"end": "2023-04-01T00:00"}), and the training job moves the splits forward to it
+END = "{{ dag_run.conf.get('end', '" + config["deployment"]["go_live"] + "') }}"
+WINDOW = f"--start {config['window']['start']} --end {END}"
 
 with DAG(
     dag_id="model_training",
-    schedule=None,  # triggered: by hand for the first model; later by decide_actions for a retrain
+    schedule=None,  # triggered: by hand for the first model; by daily_monitoring for a retrain
     start_date=datetime(2018, 3, 1),
     catchup=False,
     tags=["training"],

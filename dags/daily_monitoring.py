@@ -1,7 +1,11 @@
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 
+import pandas as pd
 import yaml
 from airflow.providers.standard.operators.bash import BashOperator
+from airflow.providers.standard.operators.python import ShortCircuitOperator
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sdk import DAG
 from airflow.timetables.interval import CronDataIntervalTimetable
 
@@ -15,6 +19,13 @@ INTERVAL = "--start {{ data_interval_start.isoformat() }} --end {{ data_interval
 def task(task_id, command, **kwargs):
     return BashOperator(task_id=task_id, bash_command=f"python main.py {command} {INTERVAL}",
                         cwd="/opt/airflow/crash-forecast", **kwargs)
+
+
+def retrain_requested(data_interval_start):
+    """True if decide_actions asked for a retrain on the labelled day; False skips the trigger."""
+    day = (data_interval_start - timedelta(days=config["monitoring"]["label_lag_days"])).date()
+    folder = f"/opt/airflow/crash-forecast/{config['paths']['datamart']}/gold/monitoring/actions/date={day}"
+    return os.path.exists(folder) and (pd.read_parquet(folder)["action"] == "retrain").any()
 
 
 with DAG(
@@ -32,6 +43,19 @@ with DAG(
     stability = task("monitor_stability", "monitor_stability")
     attribution = task("monitor_attribution", "monitor_attribution")
     actions = task("decide_actions", "decide_actions")
+    apply = task("apply_actions", "apply_actions")
+    retrain_needed = ShortCircuitOperator(task_id="retrain_needed", python_callable=retrain_requested)
+    # the retrain trains up to the first day of the labelled day's month (the labelled day is the
+    # interval's start minus label_lag_days, 1): whole months only
+    retrain = TriggerDagRunOperator(
+        task_id="trigger_retrain",
+        trigger_dag_id="model_training",
+        conf={"end": "{{ (data_interval_start - macros.timedelta(days=1)).strftime('%Y-%m-01T00:00') }}"},
+        # wait for the training: the next run then forecasts with the new shadow, and the training
+        # never runs beside the next run's Spark jobs (together they ran out of memory at 11.7 GB)
+        wait_for_completion=True,
+        poke_interval=30,
+    )
 
     labels >> [performance, fairness, stability]
-    [performance, fairness, stability, attribution] >> actions
+    [performance, fairness, stability, attribution] >> actions >> apply >> retrain_needed >> retrain
