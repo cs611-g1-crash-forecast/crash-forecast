@@ -91,6 +91,10 @@ def process_bronze_table(source, start, end, config, spark):
         files = source_files(source_cfg["file"], raw_dir, start, end)
     else:
         files = landing_files(source, config["paths"]["landing"], start, end)
+    if not files:
+        # a live interval with nothing in the feed for this source (no licence is issued on a Sunday)
+        print(f"bronze {source} {run_id_for(start, end)}: nothing arrived, 0 rows written")
+        return 0
 
     df = read_raw(files, source_cfg, spark)
 
