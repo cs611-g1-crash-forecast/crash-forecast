@@ -6,6 +6,9 @@ datamart/
 model_bank/
 logs/
 
+# the submission zip and what goes in it (tools/package.sh)
+build/
+
 # Python and Jupyter
 __pycache__/
 *.pyc

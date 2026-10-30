@@ -253,8 +253,10 @@ def decide_actions(start, end, config):
         actions.append({"at": utc_now(), "action": action, "model_version": model_version,
                         "reason": reason, "evidence": evidence})
 
+    # the columns each table is read with: on the first monitored day, a table with nothing written yet
+    # (no forecasts before go-live, so no performance rows) still reads with them, as an empty frame
     # 1. data quality: any alert in the day's hourly runs
-    dq = read_table("monitoring/data_quality", config, filters=day)
+    dq = read_table("monitoring/data_quality", config, filters=day, columns=["run_id", "check", "value", "status"])
     for r in dq[dq["status"] == "alert"].itertuples():
         act("alert", None, f"data quality {r.check} failed in {r.run_id}", f"{r.check}={r.value:g}")
     # 2. stability over the last week: the forecasts' PSI, and the features' CSI, above the alert band
@@ -276,13 +278,15 @@ def decide_actions(start, end, config):
     # 3. attribution: nDCG below the threshold on ndcg_alert_days days in a row
     attribution = read_table("monitoring/attribution", config,
                              filters=[("date", ">", str((first - timedelta(days=mon["ndcg_alert_days"])).date())),
-                                      ("date", "<=", str(first.date()))])
+                                      ("date", "<=", str(first.date()))],
+                             columns=["model_version", "feature", "value", "status"])
     ndcg_rows = attribution[attribution["feature"] == "__ndcg__"]
     for model_version, rows in ndcg_rows.groupby("model_version"):
         if len(rows) >= mon["ndcg_alert_days"] and (rows["status"] == "alert").all():
             act("alert", model_version, "feature attribution drifted (nDCG)", f"nDCG={rows['value'].iloc[-1]:.3f}")
     # the rolling P0 over the promotion window, per model and role, from today's performance rows
-    performance = read_table("monitoring/model_performance", config, filters=day)
+    performance = read_table("monitoring/model_performance", config, filters=day,
+                             columns=["model_version", "role", "granularity", "segment", "metric", "value"])
     rolling = performance[(performance["granularity"] == f"rolling_{mon['p0_window_days']}d")
                           & (performance["metric"] == "P0") & (performance["segment"] == "citywide")]
     rolling_p0 = {(r.model_version, r.role): r.value for r in rolling.itertuples()}
