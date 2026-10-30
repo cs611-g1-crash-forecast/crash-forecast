@@ -82,5 +82,14 @@ services:
     ports:
       - "8888:8888"
 
+  # the planner dashboard: reads the gold tables, writes nothing, so the repo is mounted read-only
+  dashboard:
+    <<: *airflow-common
+    command: ["bash", "-c", "streamlit run dashboard/app.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true --browser.gatherUsageStats=false"]
+    volumes:
+      - .:/opt/airflow/crash-forecast:ro
+    ports:
+      - "8501:8501"
+
 volumes:
   postgres-db-volume:
