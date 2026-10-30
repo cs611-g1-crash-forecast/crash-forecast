@@ -40,7 +40,7 @@ af backfill create --dag-id replay_days --from-date 2023-01-01 --to-date 2023-08
 
 On a 14-CPU laptop with 11.7 GB for Docker, the history took about 1.5 hours (bronze 41 min, silver and gold about 50 min), training about 4 minutes and the 240 replayed days 11 hours. Keep other Docker projects stopped meanwhile: Spark needs the memory. `hourly_forecast` and `daily_monitoring` are the same tasks on an hourly and a daily schedule, as they would run in production; the replay uses `replay_days` so that eight months take hours, not a week.
 
-Watch it in Airflow at http://localhost:8080 (no login): **DAGs → a DAG → Runs**, and a task's **Logs**. JupyterLab is at http://localhost:8888.
+Watch it in Airflow at http://localhost:8080 (no login): **DAGs → a DAG → Runs**, and a task's **Logs**. JupyterLab is at http://localhost:8888, and the planner dashboard at http://localhost:8501.
 
 Stop the stack with `docker compose down`; add `-v` to also delete Airflow's database. To run again from scratch, also delete `datamart/` and `model_bank/`.
 
@@ -75,6 +75,7 @@ docker compose exec jupyter python -m pytest tests/ -q -p no:cacheprovider
 | `datamart/gold/monitoring/` | One table per check: `data_quality`, `model_performance`, `stability` (PSI, CSI), `attribution`, `actions`, and `ops_run_log` (every task of every run, with its time) |
 | `notebooks/11_planner_view.ipynb` | The user's view: one shift's forecast on a map of the 77 areas, the 10 areas to stage in, and how many of the shift's crashes they caught |
 | `notebooks/12_monitoring_report.ipynb` | The monitoring tables as charts over the replayed period |
+| http://localhost:8501 | The planner dashboard: notebook 11's view, live. It reads the forecasts in gold as `hourly_forecast` or `replay_days` writes them; with "Follow the newest forecast" on, it moves on by itself every `dashboard.refresh_seconds` |
 
 The notebooks are saved with the outputs of the full eight-month replay. To redraw them after a run on the sample, open them in JupyterLab and run all cells; in notebook 11, first set `DAY = "2023-01-06"` (a Friday in the sample's live weeks).
 
@@ -110,11 +111,12 @@ The sample is cut from the full data by `tools/make_sample.py`, in the same fold
 | Path | What it holds |
 |---|---|
 | `Dockerfile`, `requirements.txt` | One image for everything: the official Airflow image plus Java 17, PySpark and the ML libraries |
-| `docker-compose.yaml` | Airflow (API server, scheduler, DAG processor, Postgres metadata database) and JupyterLab |
+| `docker-compose.yaml` | Airflow (API server, scheduler, DAG processor, Postgres metadata database), JupyterLab and the dashboard |
 | `config/` | Every date, path and threshold the code reads (`pipeline.yaml`), and the sample's settings |
 | `main.py` | One pipeline stage for one interval: `python main.py <stage> --start … --end …` |
 | `dags/` | The Airflow DAGs; `pipeline_tasks.py` defines the tasks the live DAGs share |
 | `utils/` | The pipeline code, one module per stage |
+| `dashboard/` | The Streamlit planner dashboard: a service of its own that reads gold and writes nothing |
 | `tests/` | Unit tests: point-in-time features, the selection and action rules, the configs |
 | `tools/` | `run_sample.sh`; `make_sample.py` and `package.sh`, which build the submission zip |
 | `notebooks/` | Checks and reports, run in JupyterLab |

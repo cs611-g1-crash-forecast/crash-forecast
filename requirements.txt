@@ -6,4 +6,5 @@ xgboost==3.4.1
 shapely==2.1.2
 matplotlib==3.11.2
 jupyterlab==4.6.4
+streamlit==1.66.1
 pytest==9.1.1
